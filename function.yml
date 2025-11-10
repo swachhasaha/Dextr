@@ -1,0 +1,41 @@
+metadata:
+  name: dextr
+  namespace: cvat
+  annotations:
+    name: "Deep Extreme Cut (DEXTR)"
+    type: interactor
+    specification: |
+      [
+        {
+          "id": 1,
+          "name": "object"
+        }
+      ]
+spec:
+  description: "Nuclio function to run DEXTR segmentation for CVAT"
+  runtime: python:3.9
+  handler: main:handler
+  env:
+    - name: MODEL_PATH
+      value: /opt/nuclio/model/dextr.onnx
+  triggers:
+    myHttpTrigger:
+      kind: http
+      maxWorkers: 2
+      attributes:
+        maxRequestBodySize: 67108864
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+  build:
+    baseImage: python:3.9-slim
+    commands:
+      - pip install --no-cache-dir numpy pillow opencv-python onnxruntime
+    volumes:
+      - name: model-volume
+        hostPath:
+          path: ./model
+    volumeMounts:
+      - mountPath: /opt/nuclio/model
+        name: model-volume
