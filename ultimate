@@ -1,0 +1,37 @@
+# ---- Build Stage ----
+FROM openvino/ubuntu20_dev:2022.3.0 AS build
+
+USER root
+
+RUN apt-get update \
+    && apt-get -y --no-install-recommends install patch python3 python3-pip unzip wget \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /root
+
+ARG DEXTR_COMMIT=352ccc76067156ebcf7267b07e0a5e43d32e83d5
+
+# Download model weights and source
+ADD https://data.vision.ee.ethz.ch/csergi/share/DEXTR/dextr_pascal-sbd.pth ./
+ADD https://github.com/scaelles/DEXTR-PyTorch/archive/$DEXTR_COMMIT.zip dextr.zip
+
+RUN python3 -m zipfile -e dextr.zip .
+
+WORKDIR /root/DEXTR-PyTorch-$DEXTR_COMMIT
+
+COPY export.py adaptive-pool.patch ./
+
+RUN patch -p1 -i adaptive-pool.patch
+RUN pip3 install torch torchvision onnx openvino-dev==2022.3.0
+
+RUN python3 export.py /root/dextr_pascal-sbd.pth /root/dextr.onnx
+RUN mo --input_model=/root/dextr.onnx --model_name=dextr --output_dir=/root
+
+# ---- Runtime Stage ----
+FROM openvino/ubuntu20_runtime:2022.3.0
+
+RUN apt-get update && apt-get install -y python3 python3-pip
+RUN pip3 install numpy opencv-python-headless pillow
+
+COPY --from=build /root/dextr.xml /root/dextr.bin /opt/nuclio/
+WORKDIR /opt/nuclio
